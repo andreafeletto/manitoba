@@ -8,17 +8,19 @@ Telegram Bot to do math
 import logging
 
 from enum import IntEnum, unique, auto
-from functools import wraps
 
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import (
     Updater,
-    MessageHandler,
     CommandHandler,
     ConversationHandler,
-    Filters,
     PicklePersistence
 )
+
+from derivative import derivative_handler
+from integral import integral_handler
+from limit import limit_handler
+from utils import done
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -51,95 +53,13 @@ def start(update, context):
     return State.HOME
 
 
-def callback_var(update, context):
-    update.message.reply_text('Choose a variable')
-    return State.CHOOSE_VAR
-
-
-def callback_integration_limits(update, context):
-    text = 'Write the limits of integration separated by a comma'
-    update.message.reply_text(text)
-    return State.CHOOSE_INT_LIMITS
-
-
-def callback_limit_value(update, context):
-    text = 'Write the value of the limit'
-    update.message.reply_text(text)
-    return State.CHOOSE_LIMIT_VALUE
-
-
-expr_type_callbacks = {
-    'derivative': [
-        callback_var,
-    ],
-    'integral': [
-        callback_var,
-        callback_integration_limits,
-    ],
-    'limit': [
-        callback_var,
-        callback_limit_value,
-    ]
-}
-
-def choose_expr_type(update, context):
-    expr_type = update.message.text
-    context.user_data['expr_type'] = expr_type
-    context.user_data['callbacks'] = expr_type_callbacks[expr_type]
-    update.message.reply_text('Type your f(x) of choice')
-    return State.TYPE_FUNC
-
-
-def intermediate(func):
-    ''' makes `func` follow the callback stack '''
-    @wraps(func)
-    def wrapper(update, context):
-        func(update, context)
-        if callbacks := context.user_data['callbacks']:
-            callback = callbacks.pop(0)
-            return callback(update, context)
-        else:
-            return compute(update, context)
-    return wrapper
-
-
-@intermediate
-def type_func(update, context):
-    func = update.message.text
-    context.user_data['function'] = func
-
-
-@intermediate
-def choose_var(update, context):
-    var = update.message.text
-    context.user_data['var'] = var
-
-
-@intermediate
-def type_integration_limits(update, context):
-    text = update.message.text
-    limits = [limit.strip() for limit in text.split(',')]
-    context.user_data['limits'] = limits
-
-
-@intermediate
-def type_limit_value(update, context):
-    text = update.message.text
-    context.user_data['limit_value'] = text
-
-
 def compute(update, context):
     expr_type = context.user_data['expr_type']
     text = 'This is what you typed:'
     if expr_type == 'derivative':
-        text += 'f(x) = {function}\n'.format(**context.user_data)
-        text += 'x = {var}\n'.format(**context.user_data)
+        text += '\nf(x) = {function}'.format(**context.user_data)
+        text += '\nx = {var}'.format(**context.user_data)
     update.message.reply_text(text)
-
-
-def done(update, context):
-    update.message.reply_text('Bye bye :(')
-    return ConversationHandler.END
 
 
 def main():
@@ -157,34 +77,9 @@ def main():
         ],
         states={
             State.HOME: [
-                MessageHandler(
-                    Filters.regex('^(derivative|integral|limit)$'),
-                    choose_expr_type
-                )
-            ],
-            State.TYPE_FUNC: [
-                MessageHandler(
-                    Filters.text & ~Filters.command,
-                    type_func
-                )
-            ],
-            State.CHOOSE_VAR: [
-                MessageHandler(
-                    Filters.text & ~Filters.command,
-                    choose_var
-                )
-            ],
-            State.CHOOSE_INT_LIMITS: [
-                MessageHandler(
-                    Filters.text & ~Filters.command,
-                    type_integration_limits
-                )
-            ],
-            State.CHOOSE_LIMIT_VALUE: [
-                MessageHandler(
-                    Filters.text & ~Filters.command,
-                    type_limit_value
-                )
+                derivative_handler,
+                integral_handler,
+                limit_handler,
             ],
         },
         fallbacks=[CommandHandler('done', done)],
